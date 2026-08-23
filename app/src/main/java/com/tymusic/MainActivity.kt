@@ -2,6 +2,7 @@ package com.tymusic
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -32,12 +33,8 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -430,6 +427,45 @@ private const val HIDE_OPEN_APP_PROMO_JS = """
     })();
 """
 
+private const val PLAYER_VISIBILITY_JS = """
+    (function() {
+        if (window.__tyPvHook) return;
+        window.__tyPvHook = true;
+        var report = function() {
+            try {
+                var pp = document.querySelector('ytmusic-player-page');
+                var open = !!pp && getComputedStyle(pp).visibility !== 'hidden';
+                AndroidBridge.setPlayerOpen(open ? '1' : '0');
+            } catch (e) {}
+        };
+        report();
+        setInterval(report, 800);
+    })();
+"""
+
+private const val CLOSE_PLAYER_JS = """
+    (function() {
+        var pp = document.querySelector('ytmusic-player-page');
+        if (!pp) return 'no-player';
+        if (getComputedStyle(pp).visibility === 'hidden') return 'already-closed';
+        try {
+            if (typeof pp.onCollapseButtonClick === 'function') {
+                pp.onCollapseButtonClick();
+                return 'method';
+            }
+        } catch (e) {}
+        var btns = pp.querySelectorAll('button,[role="button"]');
+        for (var i = 0; i < btns.length; i++) {
+            var al = btns[i].getAttribute('aria-label') || '';
+            if (/minimi|colaps|cerrar|close|dismiss/i.test(al)) {
+                btns[i].click();
+                return 'clicked';
+            }
+        }
+        return 'no-op';
+    })();
+"""
+
 class MainActivity : ComponentActivity() {
 
     private var webView: WebView? = null
@@ -472,6 +508,11 @@ class MainActivity : ComponentActivity() {
         @JavascriptInterface
         fun setArtist(value: String) {
             PlaybackService.updateArtist(value)
+        }
+
+        @JavascriptInterface
+        fun setPlayerOpen(value: String) {
+            WebViewHolder.playerOverlayOpen = value == "1"
         }
     }
 
@@ -564,6 +605,9 @@ class MainActivity : ComponentActivity() {
 object WebViewHolder {
     @Volatile
     var webView: WebView? = null
+
+    @Volatile
+    var playerOverlayOpen: Boolean = false
 }
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -573,15 +617,16 @@ private fun MusicWebView(
     onWebViewReady: (WebView) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var canGoBack by remember { mutableStateOf(false) }
+    val activity = LocalContext.current as? Activity
 
-    DisposableEffect(Unit) {
-        PlayerBus.historyListener = { canGoBack = it }
-        onDispose { PlayerBus.historyListener = null }
-    }
-
-    BackHandler(enabled = canGoBack) {
-        WebViewHolder.webView?.let { performSmartBack(it) }
+    BackHandler(enabled = true) {
+        val webView = WebViewHolder.webView
+        when {
+            webView == null -> activity?.finish()
+            WebViewHolder.playerOverlayOpen -> webView.evaluateJavascript(CLOSE_PLAYER_JS, null)
+            webView.canGoBack() -> performSmartBack(webView)
+            else -> activity?.finish()
+        }
     }
 
     AndroidView(
@@ -592,14 +637,12 @@ private fun MusicWebView(
             WebViewHolder.webView?.also { existing ->
                 Log.d(TAG, "reattaching persistent WebView")
                 (existing.parent as? ViewGroup)?.removeView(existing)
-                canGoBack = existing.canGoBack()
                 onWebViewReady(existing)
             } ?: createMusicWebView(
                 context.applicationContext,
                 bridge,
             ).also { created ->
                 WebViewHolder.webView = created
-                canGoBack = false
                 onWebViewReady(created)
             }
         },
@@ -694,7 +737,8 @@ private fun createMusicWebView(
     if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
         WebViewCompat.addDocumentStartJavaScript(
             webView,
-            VISIBILITY_SPOOF_JS + AD_BLOCK_JS + TAP_HIGHLIGHT_JS + APP_PROMO_CSS + HIDE_OPEN_APP_PROMO_JS,
+            VISIBILITY_SPOOF_JS + AD_BLOCK_JS + TAP_HIGHLIGHT_JS + APP_PROMO_CSS +
+                HIDE_OPEN_APP_PROMO_JS + PLAYER_VISIBILITY_JS,
             setOf("https://music.youtube.com"),
         )
         WebViewCompat.addDocumentStartJavaScript(
