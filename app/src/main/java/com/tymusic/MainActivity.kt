@@ -4,12 +4,17 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Message
 import android.util.Log
+import android.view.View
 import android.view.ViewGroup
+import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
@@ -548,12 +553,22 @@ private fun MusicWebView(
     )
 }
 
+private class BackgroundSafeWebView(context: Context) : WebView(context) {
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(View.VISIBLE)
+    }
+
+    override fun onVisibilityAggregated(isVisible: Boolean) {
+        super.onVisibilityAggregated(true)
+    }
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 private fun createMusicWebView(
     appContext: Context,
     bridge: Any,
 ): WebView {
-    val webView = WebView(appContext)
+    val webView = BackgroundSafeWebView(appContext)
     webView.layoutParams = ViewGroup.LayoutParams(
         ViewGroup.LayoutParams.MATCH_PARENT,
         ViewGroup.LayoutParams.MATCH_PARENT,
@@ -561,8 +576,40 @@ private fun createMusicWebView(
     webView.settings.javaScriptEnabled = true
     webView.settings.domStorageEnabled = true
     webView.settings.mediaPlaybackRequiresUserGesture = false
+    webView.settings.javaScriptCanOpenWindowsAutomatically = true
+    webView.settings.setSupportMultipleWindows(true)
+    webView.settings.userAgentString = webView.settings.userAgentString.replace("; wv", "")
+
+    CookieManager.getInstance().apply {
+        setAcceptCookie(true)
+        setAcceptThirdPartyCookies(webView, true)
+    }
+
+    webView.webChromeClient = object : WebChromeClient() {
+        override fun onCreateWindow(
+            view: WebView,
+            isDialog: Boolean,
+            isUserGesture: Boolean,
+            resultMsg: Message,
+        ): Boolean {
+            val target = WebViewHolder.webView ?: view
+            val trap = WebView(view.context)
+            trap.webViewClient = object : WebViewClient() {
+                override fun onPageStarted(popup: WebView, url: String, favicon: Bitmap?) {
+                    super.onPageStarted(popup, url, favicon)
+                    if (url == "about:blank") return
+                    target.loadUrl(url)
+                    popup.post { popup.destroy() }
+                }
+            }
+            (resultMsg.obj as WebView.WebViewTransport).webView = trap
+            resultMsg.sendToTarget()
+            return true
+        }
+    }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true)
+        webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
+        webView.settings.setOffscreenPreRaster(true)
     }
 
     webView.addJavascriptInterface(bridge, "AndroidBridge")
