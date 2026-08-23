@@ -522,10 +522,6 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermissionIfNeeded()
         enableEdgeToEdge()
 
-        PlayerBus.commandHandler = { command ->
-            runOnUiThread { executeCommand(command) }
-        }
-
         setContent {
             TYMusicTheme {
                 Surface(
@@ -539,26 +535,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-    }
-
-    private fun executeCommand(command: String) {
-        Log.d(TAG, "executeCommand=$command")
-        if (command.startsWith(PlaybackService.COMMAND_SEEK_PREFIX)) {
-            val targetMs = command.substringAfter(':').toLongOrNull() ?: return
-            val seconds = targetMs / 1000.0
-            webView?.evaluateJavascript(
-                "(function(){var v=document.querySelector('video,audio');if(v&&isFinite(v.duration)){v.currentTime=$seconds;}})()",
-                null,
-            )
-            return
-        }
-        val script = when (command) {
-            PlaybackService.COMMAND_PLAY_PAUSE -> COMMAND_PLAY_PAUSE_JS
-            PlaybackService.COMMAND_NEXT -> COMMAND_NEXT_JS
-            PlaybackService.COMMAND_PREVIOUS -> COMMAND_PREVIOUS_JS
-            else -> return
-        }
-        webView?.evaluateJavascript(script, null)
     }
 
     override fun onPause() {
@@ -584,11 +560,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         Log.d(TAG, "activity onDestroy finishing=$isFinishing")
-        PlayerBus.commandHandler = null
         super.onDestroy()
         if (isFinishing || isDestroyed) {
-            isPlaying = false
-            PlaybackService.stopNow(applicationContext)
+            if (isPlaying) {
+                Log.d(TAG, "exiting with playback active: keeping foreground service")
+            } else {
+                PlaybackService.stopNow(applicationContext)
+            }
         }
     }
 
@@ -659,24 +637,46 @@ private class BackgroundSafeWebView(context: Context) : WebView(context) {
     }
 }
 
+fun runWebViewCommand(command: String) {
+    val webView = WebViewHolder.webView ?: return
+    Log.d(TAG, "runWebViewCommand=$command")
+    webView.post {
+        if (command.startsWith(PlaybackService.COMMAND_SEEK_PREFIX)) {
+            val targetMs = command.substringAfter(':').toLongOrNull() ?: return@post
+            val seconds = targetMs / 1000.0
+            webView.evaluateJavascript(
+                "(function(){var v=document.querySelector('video,audio');if(v&&isFinite(v.duration)){v.currentTime=$seconds;}})()",
+                null,
+            )
+            return@post
+        }
+        val script = when (command) {
+            PlaybackService.COMMAND_PLAY_PAUSE -> COMMAND_PLAY_PAUSE_JS
+            PlaybackService.COMMAND_NEXT -> COMMAND_NEXT_JS
+            PlaybackService.COMMAND_PREVIOUS -> COMMAND_PREVIOUS_JS
+            else -> return@post
+        }
+        webView.evaluateJavascript(script, null)
+    }
+}
+
 private fun performSmartBack(webView: WebView) {
     val list = webView.copyBackForwardList()
     val curIdx = list.currentIndex
     if (curIdx <= 0) return
     val curUrl = webView.url ?: list.getItemAtIndex(curIdx).url ?: ""
-    val onWatch = curUrl.contains("/watch")
     var target = -1
     for (i in curIdx - 1 downTo 0) {
         val entryUrl = list.getItemAtIndex(i).url ?: continue
         if (entryUrl.startsWith("https://accounts.google.com")) continue
-        if (onWatch && entryUrl.contains("/watch")) continue
+        if (entryUrl.contains("/watch")) continue
         target = i
         break
     }
     Log.d(TAG, "smartBack cur=$curIdx target=$target url=$curUrl")
     when {
         target != -1 -> webView.goBackOrForward(target - curIdx)
-        webView.canGoBack() -> webView.goBack()
+        else -> webView.loadUrl(MUSIC_URL)
     }
 }
 
@@ -789,7 +789,6 @@ private fun createMusicWebView(
 
         override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
             Log.d(TAG, "navigated: $url")
-            PlayerBus.historyListener?.invoke(view.canGoBack())
         }
 
         override fun onPageFinished(view: WebView, url: String?) {

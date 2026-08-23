@@ -78,9 +78,9 @@ class PlaybackService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(SERVICE_TAG, "onStartCommand action=${intent?.getStringExtra(EXTRA_ACTION)}")
         when (intent?.getStringExtra(EXTRA_ACTION)) {
-            ACTION_PLAY_PAUSE -> PlayerBus.execute(COMMAND_PLAY_PAUSE)
-            ACTION_NEXT -> PlayerBus.execute(COMMAND_NEXT)
-            ACTION_PREVIOUS -> PlayerBus.execute(COMMAND_PREVIOUS)
+            ACTION_PLAY_PAUSE -> runWebViewCommand(COMMAND_PLAY_PAUSE)
+            ACTION_NEXT -> runWebViewCommand(COMMAND_NEXT)
+            ACTION_PREVIOUS -> runWebViewCommand(COMMAND_PREVIOUS)
         }
         promoteToForeground()
         return START_NOT_STICKY
@@ -105,9 +105,9 @@ class PlaybackService : Service() {
         session.setCallback(object : MediaSessionCompat.Callback() {
             override fun onPlay() = onCommandExpectingState(true)
             override fun onPause() = onCommandExpectingState(false)
-            override fun onSkipToNext() = PlayerBus.execute(COMMAND_NEXT)
-            override fun onSkipToPrevious() = PlayerBus.execute(COMMAND_PREVIOUS)
-            override fun onSeekTo(pos: Long) = PlayerBus.execute(COMMAND_SEEK_PREFIX + pos)
+            override fun onSkipToNext() = runWebViewCommand(COMMAND_NEXT)
+            override fun onSkipToPrevious() = runWebViewCommand(COMMAND_PREVIOUS)
+            override fun onSeekTo(pos: Long) = runWebViewCommand(COMMAND_SEEK_PREFIX + pos)
         })
         session.isActive = true
         mediaSession = session
@@ -115,7 +115,7 @@ class PlaybackService : Service() {
 
     private fun onCommandExpectingState(targetPlaying: Boolean) {
         if (isPlaying != targetPlaying) {
-            PlayerBus.execute(COMMAND_PLAY_PAUSE)
+            runWebViewCommand(COMMAND_PLAY_PAUSE)
         }
     }
 
