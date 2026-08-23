@@ -89,6 +89,16 @@ class PlaybackService : Service() {
     override fun onTaskRemoved(rootIntent: Intent?) {
         Log.d(SERVICE_TAG, "onTaskRemoved")
         super.onTaskRemoved(rootIntent)
+        taskRemoved = true
+        runWebViewCommand(COMMAND_PAUSE_MEDIA)
+        WebViewHolder.detachAndDestroyWebView()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+        stopSelf()
     }
 
     override fun onDestroy() {
@@ -258,6 +268,15 @@ class PlaybackService : Service() {
         const val COMMAND_NEXT = "next"
         const val COMMAND_PREVIOUS = "previous"
         const val COMMAND_SEEK_PREFIX = "seek:"
+        const val COMMAND_PAUSE_MEDIA = "pause_media"
+
+        @Volatile
+        var taskRemoved: Boolean = false
+            private set
+
+        fun clearTaskRemoved() {
+            taskRemoved = false
+        }
 
         private const val EXTRA_ACTION = "action"
         private const val CHANNEL_ID = "playback"
@@ -302,6 +321,10 @@ class PlaybackService : Service() {
         private var instance: PlaybackService? = null
 
         fun updateState(context: Context, playing: Boolean, title: String?) {
+            if (taskRemoved) {
+                Log.d(SERVICE_TAG, "updateState ignored: task removed")
+                return
+            }
             mainHandler.post {
                 Log.d(SERVICE_TAG, "updateState playing=$playing title=$title")
                 val appContext = context.applicationContext

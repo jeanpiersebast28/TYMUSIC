@@ -466,6 +466,14 @@ private const val CLOSE_PLAYER_JS = """
     })();
 """
 
+private const val COMMAND_PAUSE_MEDIA_JS = """
+    (function() {
+        var v = document.querySelector('video,audio');
+        if (v && !v.paused) { v.pause(); return 'paused'; }
+        return 'already-paused';
+    })();
+"""
+
 class MainActivity : ComponentActivity() {
 
     private var webView: WebView? = null
@@ -519,6 +527,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.d(TAG, "activity onCreate")
+        PlaybackService.clearTaskRemoved()
         requestNotificationPermissionIfNeeded()
         enableEdgeToEdge()
 
@@ -586,6 +595,14 @@ object WebViewHolder {
 
     @Volatile
     var playerOverlayOpen: Boolean = false
+
+    fun detachAndDestroyWebView() {
+        val webView = webView ?: return
+        Log.d("WebViewHolder", "detaching and destroying webview")
+        this.webView = null
+        playerOverlayOpen = false
+        webView.post { webView.destroy() }
+    }
 }
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -654,6 +671,7 @@ fun runWebViewCommand(command: String) {
             PlaybackService.COMMAND_PLAY_PAUSE -> COMMAND_PLAY_PAUSE_JS
             PlaybackService.COMMAND_NEXT -> COMMAND_NEXT_JS
             PlaybackService.COMMAND_PREVIOUS -> COMMAND_PREVIOUS_JS
+            PlaybackService.COMMAND_PAUSE_MEDIA -> COMMAND_PAUSE_MEDIA_JS
             else -> return@post
         }
         webView.evaluateJavascript(script, null)
