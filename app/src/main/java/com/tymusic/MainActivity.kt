@@ -581,7 +581,7 @@ private fun MusicWebView(
     }
 
     BackHandler(enabled = canGoBack) {
-        WebViewHolder.webView?.goBack()
+        WebViewHolder.webView?.let { performSmartBack(it) }
     }
 
     AndroidView(
@@ -613,6 +613,27 @@ private class BackgroundSafeWebView(context: Context) : WebView(context) {
 
     override fun onVisibilityAggregated(isVisible: Boolean) {
         super.onVisibilityAggregated(true)
+    }
+}
+
+private fun performSmartBack(webView: WebView) {
+    val list = webView.copyBackForwardList()
+    val curIdx = list.currentIndex
+    if (curIdx <= 0) return
+    val curUrl = webView.url ?: list.getItemAtIndex(curIdx).url ?: ""
+    val onWatch = curUrl.contains("/watch")
+    var target = -1
+    for (i in curIdx - 1 downTo 0) {
+        val entryUrl = list.getItemAtIndex(i).url ?: continue
+        if (entryUrl.startsWith("https://accounts.google.com")) continue
+        if (onWatch && entryUrl.contains("/watch")) continue
+        target = i
+        break
+    }
+    Log.d(TAG, "smartBack cur=$curIdx target=$target url=$curUrl")
+    when {
+        target != -1 -> webView.goBackOrForward(target - curIdx)
+        webView.canGoBack() -> webView.goBack()
     }
 }
 
