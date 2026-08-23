@@ -234,7 +234,6 @@ class PlaybackService : Service() {
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(0xFF0033.toInt())
-            .setColorized(true)
             .setContentTitle(trackTitle ?: getString(R.string.notif_title))
             .setContentText(artist ?: getString(R.string.notif_text))
             .setContentIntent(contentPendingIntent())
