@@ -3,6 +3,7 @@ package com.tymusic
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
@@ -377,6 +378,58 @@ private const val COMMAND_PREVIOUS_JS = """
     })();
 """
 
+private const val APP_PROMO_CSS = """
+    (function() {
+        if (window.__tyPromoCss) return;
+        window.__tyPromoCss = true;
+        try {
+            var s = document.createElement('style');
+            s.id = 'ty-hide-promo';
+            s.textContent = '.app-install-link{display:none!important}';
+            (document.head || document.documentElement).appendChild(s);
+        } catch (e) {}
+    })();
+"""
+
+private const val HIDE_OPEN_APP_PROMO_JS = """
+    (function() {
+        if (window.__tyHideOpenApp) return;
+        window.__tyHideOpenApp = true;
+        var reBtn = /(abrir|obtener|descargar|instalar|open|get|install)\s+(la\s+|el\s+)?(aplicaci[o\u00f3]n|app)/i;
+        var reGuide = /^abrir\s*app$/i;
+        var kill = function() {
+            try {
+                var els = document.querySelectorAll('.app-install-link');
+                for (var i = 0; i < els.length; i++) {
+                    if (els[i].style.display !== 'none') els[i].style.display = 'none';
+                }
+                var guide = document.querySelectorAll('ytmusic-guide-entry-renderer');
+                for (var j = 0; j < guide.length; j++) {
+                    var t = (guide[j].textContent || '').trim();
+                    if (t.length < 30 && reGuide.test(t)) guide[j].style.display = 'none';
+                }
+                var btns = document.querySelectorAll('a,button,[role="button"]');
+                for (var k = 0; k < btns.length; k++) {
+                    var bt = (btns[k].textContent || '').trim();
+                    if (bt && bt.length < 60 && reBtn.test(bt)) btns[k].style.display = 'none';
+                }
+            } catch (e) {}
+        };
+        try {
+            var s = document.createElement('style');
+            s.id = 'ty-hide-promo';
+            s.textContent = '.app-install-link{display:none!important}';
+            (document.head || document.documentElement).appendChild(s);
+        } catch (e) {}
+        kill();
+        setInterval(kill, 1500);
+        new MutationObserver(function() {
+            clearTimeout(window.__tyKillTimer);
+            window.__tyKillTimer = setTimeout(kill, 300);
+        }).observe(document.documentElement, { childList: true, subtree: true });
+    })();
+"""
+
 class MainActivity : ComponentActivity() {
 
     private var webView: WebView? = null
@@ -569,6 +622,9 @@ private fun createMusicWebView(
     bridge: Any,
 ): WebView {
     val webView = BackgroundSafeWebView(appContext)
+    if (appContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+        WebView.setWebContentsDebuggingEnabled(true)
+    }
     webView.layoutParams = ViewGroup.LayoutParams(
         ViewGroup.LayoutParams.MATCH_PARENT,
         ViewGroup.LayoutParams.MATCH_PARENT,
@@ -617,14 +673,40 @@ private fun createMusicWebView(
     if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
         WebViewCompat.addDocumentStartJavaScript(
             webView,
-            VISIBILITY_SPOOF_JS + AD_BLOCK_JS + TAP_HIGHLIGHT_JS,
+            VISIBILITY_SPOOF_JS + AD_BLOCK_JS + TAP_HIGHLIGHT_JS + APP_PROMO_CSS + HIDE_OPEN_APP_PROMO_JS,
             setOf("https://music.youtube.com"),
+        )
+        WebViewCompat.addDocumentStartJavaScript(
+            webView,
+            HIDE_OPEN_APP_PROMO_JS,
+            setOf(
+                "https://accounts.google.com",
+                "https://accounts.youtube.com",
+                "https://myaccount.google.com",
+            ),
         )
     } else {
         Log.w(TAG, "DOCUMENT_START_SCRIPT not supported")
     }
 
     webView.webViewClient = object : WebViewClient() {
+        override fun shouldOverrideUrlLoading(
+            view: WebView,
+            request: WebResourceRequest,
+        ): Boolean {
+            val uri = request.url
+            val scheme = uri.scheme?.lowercase()
+            val host = uri.host?.lowercase()
+            if (scheme == "intent" || scheme == "market" ||
+                (host == "play.google.com" && uri.path?.startsWith("/store/apps") == true)
+            ) {
+                Log.d(TAG, "blocked app-link: $uri")
+                view.loadUrl(MUSIC_URL)
+                return true
+            }
+            return false
+        }
+
         override fun shouldInterceptRequest(
             view: WebView,
             request: WebResourceRequest,
@@ -641,11 +723,13 @@ private fun createMusicWebView(
         }
 
         override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
+            Log.d(TAG, "navigated: $url")
             PlayerBus.historyListener?.invoke(view.canGoBack())
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
             Log.d(TAG, "onPageFinished $url")
+            view.evaluateJavascript(HIDE_OPEN_APP_PROMO_JS, null)
             view.evaluateJavascript(MEDIA_HOOK_JS, null)
         }
     }
