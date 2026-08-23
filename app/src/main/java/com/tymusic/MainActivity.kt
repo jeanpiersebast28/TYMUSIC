@@ -21,27 +21,52 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.ImageView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.tymusic.ui.theme.TYMusicTheme
 import java.io.ByteArrayInputStream
+import kotlinx.coroutines.delay
 
 private const val TAG = "TYMusic"
+private val BACKGROUND_COLOR = Color(0xFF0D0D0D)
 
 private val AD_HOSTS = listOf(
     "doubleclick.net",
@@ -533,14 +558,16 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             TYMusicTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background,
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(BACKGROUND_COLOR),
                 ) {
                     MusicWebView(
                         bridge = jsBridge,
                         onWebViewReady = { webView = it },
                     )
+                    SplashOverlay(contentReady = WebViewHolder.pageLoaded.value)
                 }
             }
         }
@@ -596,12 +623,71 @@ object WebViewHolder {
     @Volatile
     var playerOverlayOpen: Boolean = false
 
+    var pageLoaded = mutableStateOf(false)
+
     fun detachAndDestroyWebView() {
         val webView = webView ?: return
         Log.d("WebViewHolder", "detaching and destroying webview")
         this.webView = null
         playerOverlayOpen = false
+        pageLoaded.value = false
         webView.post { webView.destroy() }
+    }
+}
+
+@Composable
+private fun SplashOverlay(contentReady: Boolean) {
+    var visible by remember { mutableStateOf(true) }
+
+    LaunchedEffect(contentReady) {
+        if (contentReady) {
+            delay(300)
+            visible = false
+        } else {
+            delay(6000)
+            visible = false
+        }
+    }
+
+    val pulse = rememberInfiniteTransition(label = "splashPulse")
+    val pulseScale by pulse.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 850, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "pulseScale",
+    )
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = EnterTransition.None,
+        exit = fadeOut(animationSpec = tween(durationMillis = 500)) +
+            scaleOut(
+                targetScale = 1.15f,
+                animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+                transformOrigin = TransformOrigin.Center,
+            ),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BACKGROUND_COLOR),
+            contentAlignment = Alignment.Center,
+        ) {
+            AndroidView(
+                modifier = Modifier
+                    .size(120.dp)
+                    .graphicsLayer {
+                        scaleX = pulseScale
+                        scaleY = pulseScale
+                    },
+                factory = { context ->
+                    ImageView(context).apply { setImageResource(R.mipmap.ic_launcher) }
+                },
+            )
+        }
     }
 }
 
@@ -704,6 +790,7 @@ private fun createMusicWebView(
     bridge: Any,
 ): WebView {
     val webView = BackgroundSafeWebView(appContext)
+    webView.setBackgroundColor(BACKGROUND_COLOR.toArgb())
     if (appContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
         WebView.setWebContentsDebuggingEnabled(true)
     }
@@ -807,6 +894,11 @@ private fun createMusicWebView(
 
         override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
             Log.d(TAG, "navigated: $url")
+        }
+
+        override fun onPageCommitVisible(view: WebView, url: String?) {
+            super.onPageCommitVisible(view, url)
+            WebViewHolder.pageLoaded.value = true
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
