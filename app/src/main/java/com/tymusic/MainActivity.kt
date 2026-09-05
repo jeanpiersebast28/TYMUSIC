@@ -507,6 +507,76 @@ private const val COMMAND_PAUSE_MEDIA_JS = """
     })();
 """
 
+private const val AUTO_CONTINUE_JS = """
+    (function() {
+        if (window.__tyAutoContinue) return;
+        window.__tyAutoContinue = true;
+        var lastInteraction = Date.now();
+        var activity = function() {
+            lastInteraction = Date.now();
+        };
+        try {
+            var events = ['mousemove','mousedown','mouseup','touchstart','touchend','touchmove','pointerdown','pointerup','keydown','click','scroll','wheel'];
+            for (var i = 0; i < events.length; i++) {
+                document.addEventListener(events[i], activity, true);
+                window.addEventListener(events[i], activity, true);
+            }
+        } catch (e) {}
+        var clickedAny = false;
+        var dismiss = function() {
+            var done = false;
+            var expr = /(todav|a[u\u00fa]n|still|continue|continuar|seguir|continuas|yes|s[i\u00ed]|keep|de acuerdo|ok|siguiente)/i;
+            var selectors = [
+                'yt-confirm-dialog-renderer button[aria-label]',
+                'yt-confirm-dialog-renderer button',
+                'tp-yt-paper-dialog button[aria-label]',
+                'tp-yt-paper-dialog yt-button-renderer button',
+                'ytmusic-prompt-banner-renderer button',
+                'ytmusic-prompt-banner-renderer tp-yt-paper-button',
+                'ytmusic-dialog-renderer button',
+                '.ytp-ad-overlay button',
+                'iron-overlay-backdrop',
+            ];
+            for (var s = 0; s < selectors.length; s++) {
+                var nodes = document.querySelectorAll(selectors[s]);
+                for (var n = 0; n < nodes.length; n++) {
+                    var el = nodes[n];
+                    var label = (el.getAttribute('aria-label') || '').trim();
+                    var text = (el.textContent || '').trim();
+                    if (el.tagName === 'IRON-OVERLAY-BACKDROP' || el.tagName === 'YT-CONFIRM-DIALOG-RENDERER') {
+                        try { el.remove(); } catch (e) {}
+                        continue;
+                    }
+                    if (label && expr.test(label)) { el.click(); done = true; continue; }
+                    if (text && text.length < 30 && expr.test(text)) { el.click(); done = true; }
+                }
+            }
+            var video = document.querySelector('video,audio');
+            if (done && video && video.paused) {
+                try { video.play(); } catch (e) {}
+            }
+            if (done) clickedAny = true;
+            return done;
+        };
+        var keepAlive = function() {
+            try {
+                if (Date.now() - lastInteraction > 30000) {
+                    activity();
+                    var evt = new Event('mousemove', { bubbles: true });
+                    document.dispatchEvent(evt);
+                }
+            } catch (e) {}
+        };
+        setInterval(function() {
+            try {
+                dismiss();
+                keepAlive();
+            } catch (e) {}
+        }, 1200);
+        console.log('TYTEST autocontinue ready');
+    })();
+"""
+
 class MainActivity : ComponentActivity() {
 
     private var webView: WebView? = null
@@ -871,7 +941,7 @@ private fun createMusicWebView(
         WebViewCompat.addDocumentStartJavaScript(
             webView,
             VISIBILITY_SPOOF_JS + AD_BLOCK_JS + TAP_HIGHLIGHT_JS + APP_PROMO_CSS +
-                HIDE_OPEN_APP_PROMO_JS + PLAYER_VISIBILITY_JS,
+                HIDE_OPEN_APP_PROMO_JS + PLAYER_VISIBILITY_JS + AUTO_CONTINUE_JS,
             setOf("https://music.youtube.com"),
         )
         WebViewCompat.addDocumentStartJavaScript(
