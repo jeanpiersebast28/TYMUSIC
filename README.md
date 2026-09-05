@@ -15,6 +15,7 @@
 
 - Android 7.0 (API 24) o superior
 - Permisos: notificaciones y reproducción multimedia
+- **Conexión a internet**: obligatoria. Esta app reproduce en streaming y **no permite descargar ni guardar canciones** para escuchar sin conexión.
 
 ## Instalación
 
