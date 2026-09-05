@@ -23,11 +23,11 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.ImageView
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -67,14 +67,10 @@ import kotlinx.coroutines.delay
 
 private const val TAG = "TYMusicLite"
 private val DARK_BACKGROUND = Color(0xFF0D0D0D)
-private val LIGHT_BACKGROUND = Color(0xFFFFFFFF)
 
 private fun isDarkConfig(config: android.content.res.Configuration): Boolean =
     (config.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
         android.content.res.Configuration.UI_MODE_NIGHT_YES
-
-private fun backgroundColorFor(config: android.content.res.Configuration): Int =
-    if (isDarkConfig(config)) DARK_BACKGROUND.toArgb() else LIGHT_BACKGROUND.toArgb()
 
 private val AD_HOSTS = listOf(
     "doubleclick.net",
@@ -580,7 +576,6 @@ private const val AUTO_CONTINUE_JS = """
 class MainActivity : ComponentActivity() {
 
     private var webView: WebView? = null
-    private var systemDark by mutableStateOf(false)
 
     @Volatile
     private var isPlaying = false
@@ -633,19 +628,15 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "activity onCreate")
         PlaybackService.clearTaskRemoved()
         requestNotificationPermissionIfNeeded()
-        systemDark = isDarkConfig(resources.configuration)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(scrim = 0),
+        )
 
         setContent {
-            val bgColor by animateColorAsState(
-                targetValue = if (systemDark) DARK_BACKGROUND else LIGHT_BACKGROUND,
-                animationSpec = tween(durationMillis = 300),
-                label = "bgColor",
-            )
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(bgColor),
+                    .background(DARK_BACKGROUND),
             ) {
                 MusicWebView(
                     bridge = jsBridge,
@@ -653,7 +644,7 @@ class MainActivity : ComponentActivity() {
                 )
                 SplashOverlay(
                     contentReady = WebViewHolder.pageLoaded.value,
-                    backgroundColor = bgColor,
+                    backgroundColor = DARK_BACKGROUND,
                 )
             }
         }
@@ -663,8 +654,7 @@ class MainActivity : ComponentActivity() {
         super.onConfigurationChanged(newConfig)
         val dark = isDarkConfig(newConfig)
         Log.d(TAG, "onConfigurationChanged dark=$dark")
-        systemDark = dark
-        WebViewHolder.webView?.setBackgroundColor(backgroundColorFor(newConfig))
+        WebViewHolder.webView?.setBackgroundColor(DARK_BACKGROUND.toArgb())
     }
 
     override fun onPause() {
@@ -815,7 +805,7 @@ private fun MusicWebView(
             WebViewHolder.webView?.also { existing ->
                 Log.d(TAG, "reattaching persistent WebView")
                 (existing.parent as? ViewGroup)?.removeView(existing)
-                existing.setBackgroundColor(backgroundColorFor(context.resources.configuration))
+                existing.setBackgroundColor(DARK_BACKGROUND.toArgb())
                 onWebViewReady(existing)
             } ?: createMusicWebView(
                 context.applicationContext,
@@ -888,7 +878,7 @@ private fun createMusicWebView(
     bridge: Any,
 ): WebView {
     val webView = BackgroundSafeWebView(appContext)
-    webView.setBackgroundColor(backgroundColorFor(appContext.resources.configuration))
+    webView.setBackgroundColor(DARK_BACKGROUND.toArgb())
     if (appContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
         WebView.setWebContentsDebuggingEnabled(true)
     }
