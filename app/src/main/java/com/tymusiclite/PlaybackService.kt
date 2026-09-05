@@ -39,7 +39,6 @@ class PlaybackService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.d(SERVICE_TAG, "service onCreate")
         instance = this
         createNotificationChannel()
         setupMediaSession()
@@ -76,7 +75,6 @@ class PlaybackService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(SERVICE_TAG, "onStartCommand action=${intent?.getStringExtra(EXTRA_ACTION)}")
         when (intent?.getStringExtra(EXTRA_ACTION)) {
             ACTION_PLAY_PAUSE -> runWebViewCommand(COMMAND_PLAY_PAUSE)
             ACTION_NEXT -> runWebViewCommand(COMMAND_NEXT)
@@ -87,7 +85,6 @@ class PlaybackService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        Log.d(SERVICE_TAG, "onTaskRemoved")
         super.onTaskRemoved(rootIntent)
         taskRemoved = true
         runWebViewCommand(COMMAND_PAUSE_MEDIA)
@@ -102,7 +99,6 @@ class PlaybackService : Service() {
     }
 
     override fun onDestroy() {
-        Log.d(SERVICE_TAG, "service onDestroy")
         instance = null
         releaseLocks()
         mediaSession?.release()
@@ -321,11 +317,9 @@ class PlaybackService : Service() {
 
         fun updateState(context: Context, playing: Boolean, title: String?) {
             if (taskRemoved) {
-                Log.d(SERVICE_TAG, "updateState ignored: task removed")
                 return
             }
             mainHandler.post {
-                Log.d(SERVICE_TAG, "updateState playing=$playing title=$title")
                 val appContext = context.applicationContext
                 val stateChanged = isPlaying != playing
                 val titleChanged = trackTitle != title
@@ -366,7 +360,6 @@ class PlaybackService : Service() {
             if (url.isBlank()) return
             mainHandler.post {
                 if (url != artworkUrl) {
-                    Log.d(SERVICE_TAG, "artwork changed: $url")
                     artworkUrl = url
                     currentArtworkBitmap = null
                 }
@@ -403,7 +396,6 @@ class PlaybackService : Service() {
                     if (artworkUrl == url && bitmap != null) {
                         lastFailedArtworkUrl = null
                         currentArtworkBitmap = bitmap
-                        Log.d(SERVICE_TAG, "artwork ok ${bitmap.width}x${bitmap.height}")
                         instance?.refreshMediaNotification()
                     } else if (bitmap == null) {
                         lastFailedArtworkUrl = url

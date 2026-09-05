@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
+import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -21,6 +22,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -67,10 +69,6 @@ import kotlinx.coroutines.delay
 
 private const val TAG = "TYMusicLite"
 private val DARK_BACKGROUND = Color(0xFF0D0D0D)
-
-private fun isDarkConfig(config: android.content.res.Configuration): Boolean =
-    (config.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-        android.content.res.Configuration.UI_MODE_NIGHT_YES
 
 private val AD_HOSTS = listOf(
     "doubleclick.net",
@@ -133,7 +131,6 @@ private const val VISIBILITY_SPOOF_JS = """
                 configurable: true
             });
         } catch (e) {}
-        console.log('TYTEST visibility spoofed');
     })();
 """
 
@@ -167,12 +164,6 @@ private const val AD_BLOCK_JS = """
                 text.indexOf('"adBreaks"') !== -1
             );
         };
-        var cleanPlayerResponse = function(pr) {
-            if (!pr || typeof pr !== 'object') return pr;
-            if (Array.isArray(pr)) { stripAdNodes(pr); return pr; }
-            AD_KEYS.forEach(function(k) { delete pr[k]; });
-            return pr;
-        };
         try {
             var _ytipr;
             Object.defineProperty(window, 'ytInitialPlayerResponse', {
@@ -181,11 +172,10 @@ private const val AD_BLOCK_JS = """
                     _ytipr = v;
                     stripAdNodes(_ytipr);
                     window.__tyLastPlayerResponse = _ytipr;
-                    console.log('TYTEST trapped ytInitialPlayerResponse');
                 },
                 configurable: true
             });
-        } catch (e) { console.log('TYTEST trap fail: ' + e); }
+        } catch (e) {}
         try {
             var _ytid;
             Object.defineProperty(window, 'ytInitialData', {
@@ -193,7 +183,6 @@ private const val AD_BLOCK_JS = """
                 set: function(v) {
                     _ytid = v;
                     stripAdNodes(_ytid);
-                    console.log('TYTEST trapped ytInitialData');
                 },
                 configurable: true
             });
@@ -208,21 +197,16 @@ private const val AD_BLOCK_JS = """
                 if (hasAdKeys(text)) {
                     var before = stripCount;
                     stripAdNodes(data);
-                    if (stripCount > before) {
-                        console.log('TYTEST JSON.parse stripped ' + (stripCount - before) + ' ad nodes');
-                    }
                 }
             } catch (e) {}
             return data;
         };
-
         setInterval(function() {
             try {
                 var player = document.getElementById('movie_player');
                 var adShowing = player && player.classList.contains('ad-showing');
                 var video = document.querySelector('video');
                 if (adShowing) {
-                    console.log('TYTEST watchdog: ad showing!');
                     if (video && video.duration && isFinite(video.duration)) {
                         video.currentTime = video.duration;
                     }
@@ -239,7 +223,79 @@ private const val AD_BLOCK_JS = """
                 }
             } catch (e) {}
         }, 150);
-        console.log('TYTEST adblock ready');
+    })();
+"""
+
+private const val PLAYER_ARTIST_LINK_JS = """
+    (function() {
+        if (window.__tyArtistLink) return;
+        window.__tyArtistLink = true;
+        var splitArtists = function(text) {
+            var parts = String(text).split(/\s*[,]\s*|\s*[;]\s*|\s*[•·]\s*|\s+y\s+|\s+&\s+/i);
+            var out = [];
+            for (var i = 0; i < parts.length; i++) {
+                var p = parts[i].trim();
+                if (p) out.push(p);
+            }
+            return out;
+        };
+        var navigate = function(url) {
+            try {
+                var app = document.querySelector('ytmusic-app');
+                if (app && typeof app.navigateTo === 'function') {
+                    app.navigateTo(url);
+                    return;
+                }
+            } catch (err) {}
+            window.location.href = url;
+        };
+        document.addEventListener('click', function(e) {
+            var el = e.target;
+            while (el && el !== document) {
+                if (el.classList && el.classList.contains('ty-artist-link')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    navigate(el.href);
+                    return;
+                }
+                el = el.parentElement;
+            }
+        }, true);
+        var enhance = function() {
+            try {
+                var pp = document.querySelector('ytmusic-player-page');
+                if (!pp) return;
+                if (getComputedStyle(pp).visibility === 'hidden') return;
+                var byline = pp.querySelector('.byline');
+                if (!byline) return;
+                var text = (byline.textContent || '').trim();
+                if (!text) return;
+                var names = splitArtists(text);
+                if (names.length === 0) return;
+                if (byline.__tyLastText === text) return;
+                byline.__tyLastText = text;
+                var frag = document.createDocumentFragment();
+                for (var i = 0; i < names.length; i++) {
+                    var a = document.createElement('a');
+                    a.href = 'https://music.youtube.com/search?q=' + encodeURIComponent(names[i]);
+                    a.textContent = names[i];
+                    a.className = 'ty-artist-link';
+                    a.style.textDecoration = 'none';
+                    a.style.color = 'inherit';
+                    a.style.pointerEvents = 'auto';
+                    frag.appendChild(a);
+                    if (i < names.length - 1) frag.appendChild(document.createTextNode(', '));
+                }
+                byline.replaceChildren(frag);
+                window.__tyEnhancedArtists = names;
+            } catch (err) {}
+        };
+        enhance();
+        setInterval(enhance, 1000);
+        new MutationObserver(function() {
+            clearTimeout(window.__tyArtistTimer);
+            window.__tyArtistTimer = setTimeout(enhance, 250);
+        }).observe(document.documentElement, { childList: true, subtree: true });
     })();
 """
 
@@ -249,7 +305,6 @@ private const val TAP_HIGHLIGHT_JS = """
             var s = document.createElement('style');
             s.textContent = '*,*::before,*::after{-webkit-tap-highlight-color:rgba(0,0,0,0)!important;}';
             document.head.appendChild(s);
-            console.log('TYTEST tap highlight disabled');
         };
         if (document.head) { install(); }
         else { document.addEventListener('DOMContentLoaded', install); }
@@ -282,7 +337,6 @@ private const val MEDIA_HOOK_JS = """
                 var t = e.target;
                 if (t && (t.tagName === 'VIDEO' || t.tagName === 'AUDIO')) {
                     reportPlaying(evt === 'play');
-                    console.log('TYTEST media event: ' + evt);
                 }
             }, true);
         });
@@ -292,7 +346,6 @@ private const val MEDIA_HOOK_JS = """
                 if (pr && pr.videoDetails && pr !== window.__tyLastPRseen) {
                     window.__tyLastPRseen = pr;
                     window.__tyLastPlayerResponse = pr;
-                    console.log('TYTEST captured playerResponse: ' + (pr.videoDetails.title || '?'));
                 }
             } catch (e) {}
             var media = document.querySelector('video,audio');
@@ -321,8 +374,7 @@ private const val MEDIA_HOOK_JS = """
                 try { AndroidBridge.setArtist(byline); } catch (e) {}
             }
             var artSrc = '';
-            var artSource = '';
-            var isValidArt = function(src) {
+                        var isValidArt = function(src) {
                 if (!src) return false;
                 if (src.indexOf('data:') === 0) return src.length > 1000;
                 return src.indexOf('http') === 0;
@@ -332,7 +384,6 @@ private const val MEDIA_HOOK_JS = """
                     var u = meta.thumbnail.thumbnails[meta.thumbnail.thumbnails.length - 1].url;
                     if (isValidArt(u)) {
                         artSrc = u;
-                        artSource = 'videoDetails';
                     }
                 }
                 if (!artSrc) {
@@ -356,19 +407,16 @@ private const val MEDIA_HOOK_JS = """
                     }
                     if (img && isValidArt(img.src)) {
                         artSrc = img.src;
-                        artSource = 'playerBar';
                     }
                 }
                 if (!artSrc) {
                     var video = document.querySelector('video');
                     if (video && isValidArt(video.poster)) {
                         artSrc = video.poster;
-                        artSource = 'poster';
                     }
                 }
             } catch (e) {}
             if (artSrc !== window.__tyLastArtSent) {
-                console.log('TYTEST artwork source=' + artSource + ' len=' + artSrc.length);
                 window.__tyLastArtSent = artSrc;
             }
             if (artSrc) {
@@ -518,7 +566,6 @@ private const val AUTO_CONTINUE_JS = """
                 window.addEventListener(events[i], activity, true);
             }
         } catch (e) {}
-        var clickedAny = false;
         var dismiss = function() {
             var done = false;
             var expr = /(todav|a[u\u00fa]n|still|continue|continuar|seguir|continuas|yes|s[i\u00ed]|keep|de acuerdo|ok|siguiente)/i;
@@ -551,7 +598,6 @@ private const val AUTO_CONTINUE_JS = """
             if (done && video && video.paused) {
                 try { video.play(); } catch (e) {}
             }
-            if (done) clickedAny = true;
             return done;
         };
         var keepAlive = function() {
@@ -569,13 +615,18 @@ private const val AUTO_CONTINUE_JS = """
                 keepAlive();
             } catch (e) {}
         }, 1200);
-        console.log('TYTEST autocontinue ready');
     })();
 """
 
 class MainActivity : ComponentActivity() {
 
-    private var webView: WebView? = null
+    companion object {
+        @Volatile
+        var currentActivity: MainActivity? = null
+    }
+
+    private var fullscreenContainer: FrameLayout? = null
+    private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
 
     @Volatile
     private var isPlaying = false
@@ -584,14 +635,12 @@ class MainActivity : ComponentActivity() {
     private var trackTitle: String? = null
 
     private fun pushState() {
-        Log.d(TAG, "pushState playing=$isPlaying title=$trackTitle")
         PlaybackService.updateState(applicationContext, isPlaying, trackTitle)
     }
 
     private val jsBridge = object {
         @JavascriptInterface
         fun setPlaying(value: String) {
-            Log.d(TAG, "bridge.setPlaying=$value")
             isPlaying = value == "1"
             pushState()
         }
@@ -625,7 +674,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d(TAG, "activity onCreate")
+        currentActivity = this
         PlaybackService.clearTaskRemoved()
         requestNotificationPermissionIfNeeded()
         enableEdgeToEdge(
@@ -640,7 +689,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 MusicWebView(
                     bridge = jsBridge,
-                    onWebViewReady = { webView = it },
+                    onWebViewReady = {},
                 )
                 SplashOverlay(
                     contentReady = WebViewHolder.pageLoaded.value,
@@ -652,14 +701,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
-        val dark = isDarkConfig(newConfig)
-        Log.d(TAG, "onConfigurationChanged dark=$dark")
         WebViewHolder.webView?.setBackgroundColor(DARK_BACKGROUND.toArgb())
     }
 
     override fun onPause() {
         super.onPause()
-        Log.d(TAG, "activity onPause")
         if (isPlaying) {
             pushState()
         }
@@ -667,27 +713,75 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        Log.d(TAG, "activity onStop")
         if (isPlaying) {
             pushState()
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        Log.d(TAG, "activity onResume")
+    override fun onDestroy() {
+        super.onDestroy()
+        if (currentActivity === this) currentActivity = null
+        if ((isFinishing || isDestroyed) && !isPlaying) {
+            PlaybackService.stopNow(applicationContext)
+        }
     }
 
-    override fun onDestroy() {
-        Log.d(TAG, "activity onDestroy finishing=$isFinishing")
-        super.onDestroy()
-        if (isFinishing || isDestroyed) {
-            if (isPlaying) {
-                Log.d(TAG, "exiting with playback active: keeping foreground service")
-            } else {
-                PlaybackService.stopNow(applicationContext)
+    private class ScaleToFillFrameLayout(context: Context) : FrameLayout(context) {
+        override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+            super.onLayout(changed, l, t, r, b)
+            if (childCount > 0) {
+                val child = getChildAt(0)
+                val containerW = (r - l).toFloat()
+                val containerH = (b - t).toFloat()
+                val childW = child.measuredWidth.toFloat()
+                val childH = child.measuredHeight.toFloat()
+                if (childW > 0 && childH > 0) {
+                    val scale = maxOf(containerW / childW, containerH / childH)
+                    child.scaleX = scale
+                    child.scaleY = scale
+                    child.translationX = (containerW - childW * scale) / 2f
+                    child.translationY = (containerH - childH * scale) / 2f
+                }
             }
         }
+    }
+
+    internal fun enterFullscreen(view: View, callback: WebChromeClient.CustomViewCallback) {
+        if (fullscreenContainer != null) {
+            callback.onCustomViewHidden()
+            return
+        }
+        val container = ScaleToFillFrameLayout(this).apply {
+            setBackgroundColor(android.graphics.Color.BLACK)
+            clipChildren = true
+            clipToPadding = true
+            addView(
+                view,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                ),
+            )
+        }
+        window.addContentView(
+            container,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        fullscreenContainer = container
+        fullscreenCallback = callback
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
+    }
+
+    internal fun exitFullscreen() {
+        val container = fullscreenContainer ?: return
+        (container.parent as? ViewGroup)?.removeView(container)
+        fullscreenContainer = null
+        fullscreenCallback?.onCustomViewHidden()
+        fullscreenCallback = null
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
     }
 
     private fun requestNotificationPermissionIfNeeded() {
@@ -711,7 +805,6 @@ object WebViewHolder {
 
     fun detachAndDestroyWebView() {
         val webView = webView ?: return
-        Log.d("WebViewHolder", "detaching and destroying webview")
         this.webView = null
         playerOverlayOpen = false
         pageLoaded.value = false
@@ -803,7 +896,6 @@ private fun MusicWebView(
             .padding(WindowInsets.safeDrawing.asPaddingValues()),
         factory = { context ->
             WebViewHolder.webView?.also { existing ->
-                Log.d(TAG, "reattaching persistent WebView")
                 (existing.parent as? ViewGroup)?.removeView(existing)
                 existing.setBackgroundColor(DARK_BACKGROUND.toArgb())
                 onWebViewReady(existing)
@@ -830,7 +922,6 @@ private class BackgroundSafeWebView(context: Context) : WebView(context) {
 
 fun runWebViewCommand(command: String) {
     val webView = WebViewHolder.webView ?: return
-    Log.d(TAG, "runWebViewCommand=$command")
     webView.post {
         if (command.startsWith(PlaybackService.COMMAND_SEEK_PREFIX)) {
             val targetMs = command.substringAfter(':').toLongOrNull() ?: return@post
@@ -865,7 +956,6 @@ private fun performSmartBack(webView: WebView) {
         target = i
         break
     }
-    Log.d(TAG, "smartBack cur=$curIdx target=$target url=$curUrl")
     when {
         target != -1 -> webView.goBackOrForward(target - curIdx)
         else -> webView.loadUrl(MUSIC_URL)
@@ -919,6 +1009,14 @@ private fun createMusicWebView(
             resultMsg.sendToTarget()
             return true
         }
+
+        override fun onShowCustomView(view: View, callback: CustomViewCallback) {
+            MainActivity.currentActivity?.enterFullscreen(view, callback)
+        }
+
+        override fun onHideCustomView() {
+            MainActivity.currentActivity?.exitFullscreen()
+        }
     }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
@@ -931,7 +1029,8 @@ private fun createMusicWebView(
         WebViewCompat.addDocumentStartJavaScript(
             webView,
             VISIBILITY_SPOOF_JS + AD_BLOCK_JS + TAP_HIGHLIGHT_JS + APP_PROMO_CSS +
-                HIDE_OPEN_APP_PROMO_JS + PLAYER_VISIBILITY_JS + AUTO_CONTINUE_JS,
+                HIDE_OPEN_APP_PROMO_JS + PLAYER_VISIBILITY_JS + AUTO_CONTINUE_JS +
+                PLAYER_ARTIST_LINK_JS,
             setOf("https://music.youtube.com"),
         )
         WebViewCompat.addDocumentStartJavaScript(
@@ -958,7 +1057,6 @@ private fun createMusicWebView(
             if (scheme == "intent" || scheme == "market" ||
                 (host == "play.google.com" && uri.path?.startsWith("/store/apps") == true)
             ) {
-                Log.d(TAG, "blocked app-link: $uri")
                 view.loadUrl(MUSIC_URL)
                 return true
             }
@@ -970,7 +1068,6 @@ private fun createMusicWebView(
             request: WebResourceRequest,
         ): WebResourceResponse? {
             if (isAdUrl(request.url)) {
-                Log.d(TAG, "blocked ad url: ${request.url.host}")
                 return WebResourceResponse(
                     "text/plain",
                     "utf-8",
@@ -980,17 +1077,12 @@ private fun createMusicWebView(
             return null
         }
 
-        override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
-            Log.d(TAG, "navigated: $url")
-        }
-
         override fun onPageCommitVisible(view: WebView, url: String?) {
             super.onPageCommitVisible(view, url)
             WebViewHolder.pageLoaded.value = true
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
-            Log.d(TAG, "onPageFinished $url")
             view.evaluateJavascript(HIDE_OPEN_APP_PROMO_JS, null)
             view.evaluateJavascript(MEDIA_HOOK_JS, null)
         }
