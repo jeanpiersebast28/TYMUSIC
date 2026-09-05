@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">TYMusic</string>
+    <string name="app_name">TYMusic lite</string>
     <string name="notif_channel_name">Reproducción de música</string>
     <string name="notif_channel_desc">Muestra cuándo la música se está reproduciendo en segundo plano</string>
-    <string name="notif_title">TYMusic</string>
+    <string name="notif_title">TYMusic lite</string>
     <string name="notif_text">Reproduciendo música</string>
     <string name="action_play">Reproducir</string>
     <string name="action_pause">Pausar</string>

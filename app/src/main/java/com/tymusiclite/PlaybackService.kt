@@ -1,4 +1,4 @@
-package com.tymusic
+package com.tymusiclite
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -27,7 +27,7 @@ import androidx.media.app.NotificationCompat.MediaStyle
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val SERVICE_TAG = "TYMusic"
+private const val SERVICE_TAG = "TYMusicLite"
 
 class PlaybackService : Service() {
 
@@ -49,7 +49,7 @@ class PlaybackService : Service() {
     private fun acquireLocks() {
         try {
             val power = getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TYMusic::playback").apply {
+            wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TYMusicLite::playback").apply {
                 setReferenceCounted(false)
                 acquire(6 * 60 * 60 * 1000L)
             }
@@ -59,7 +59,7 @@ class PlaybackService : Service() {
         try {
             val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
             @Suppress("DEPRECATION")
-            wifiLock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "TYMusic::wifi").apply {
+            wifiLock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "TYMusicLite::wifi").apply {
                 setReferenceCounted(false)
                 acquire()
             }
@@ -111,7 +111,7 @@ class PlaybackService : Service() {
     }
 
     private fun setupMediaSession() {
-        val session = MediaSessionCompat(this, "TYMusicSession")
+        val session = MediaSessionCompat(this, "TYMusicLiteSession")
         session.setCallback(object : MediaSessionCompat.Callback() {
             override fun onPlay() = onCommandExpectingState(true)
             override fun onPause() = onCommandExpectingState(false)
@@ -260,9 +260,9 @@ class PlaybackService : Service() {
     }
 
     companion object {
-        const val ACTION_PLAY_PAUSE = "com.tymusic.action.PLAY_PAUSE"
-        const val ACTION_NEXT = "com.tymusic.action.NEXT"
-        const val ACTION_PREVIOUS = "com.tymusic.action.PREVIOUS"
+        const val ACTION_PLAY_PAUSE = "com.tymusiclite.action.PLAY_PAUSE"
+        const val ACTION_NEXT = "com.tymusiclite.action.NEXT"
+        const val ACTION_PREVIOUS = "com.tymusiclite.action.PREVIOUS"
         const val COMMAND_PLAY_PAUSE = "play_pause"
         const val COMMAND_NEXT = "next"
         const val COMMAND_PREVIOUS = "previous"

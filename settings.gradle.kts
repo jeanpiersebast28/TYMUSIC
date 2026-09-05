@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "TYMusic"
+rootProject.name = "TYMusic lite"
 include(":app")

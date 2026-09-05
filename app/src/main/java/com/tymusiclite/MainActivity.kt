@@ -1,4 +1,4 @@
-package com.tymusic
+package com.tymusiclite
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -65,7 +65,7 @@ import androidx.webkit.WebViewFeature
 import java.io.ByteArrayInputStream
 import kotlinx.coroutines.delay
 
-private const val TAG = "TYMusic"
+private const val TAG = "TYMusicLite"
 private val DARK_BACKGROUND = Color(0xFF0D0D0D)
 private val LIGHT_BACKGROUND = Color(0xFFFFFFFF)
 

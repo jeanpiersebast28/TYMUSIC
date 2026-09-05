@@ -1,6 +1,6 @@
-# TYMusic
+# TYMusic lite
 
-**TYMusic** es un cliente ligero de YouTube Music para Android con reproducción en segundo plano real, bloqueo de anuncios e inicio de sesión con Google, todo dentro de una interfaz nativa y sencilla.
+**TYMusic lite** es un cliente ligero de YouTube Music para Android con reproducción en segundo plano real, bloqueo de anuncios e inicio de sesión con Google, todo dentro de una interfaz nativa y sencilla.
 
 ## Características
 
@@ -18,13 +18,13 @@
 
 ## Instalación
 
-Descarga el APK más reciente desde la sección [Releases](https://github.com/jeanpiersebast28/TYMUSIC/releases), ábrelo en tu celular y acepta la instalación si el sistema lo solicita.
+Descarga el APK más reciente desde la sección [Releases](https://github.com/jeanpiersebast28/TYMusicLite/releases), ábrelo en tu celular y acepta la instalación si el sistema lo solicita.
 
 ## Compilar desde código fuente
 
 ```bash
-git clone https://github.com/jeanpiersebast28/TYMUSIC.git
-cd TYMUSIC
+git clone https://github.com/jeanpiersebast28/TYMusicLite.git
+cd TYMusicLite
 ./gradlew assembleDebug
 ```
 

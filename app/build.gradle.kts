@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.tymusic"
+    namespace = "com.tymusiclite"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.tymusic"
+        applicationId = "com.tymusiclite"
         minSdk = 24
         targetSdk = 37
         versionCode = 6
